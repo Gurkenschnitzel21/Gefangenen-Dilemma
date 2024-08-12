@@ -7,21 +7,68 @@ internal class Program
     {
         //none, Coop, Attack
         { 0, 0, 0},
-        { 0, 3, 0},
-        { 0, 5, 1}
+        { 0, 2, 0},
+        { 0, 3, 0}
     };
     private static void Main(string[] args)
     {
-        var scores = PrisonersDilemma(Misstrauisch, AugeUmAuge, 5);
-        AnsiConsole.MarkupLine($"[red]Spieler 1: {scores.Item1}Punkte[/]\n" +
-                              $"[blue]Spieler 2: {scores.Item2}Punkte[/]");
-
-        AnsiConsole.MarkupLine("[red]Spieler 1:[/]");
-        foreach (var action in scores.Item3) AnsiConsole.MarkupLine($"{action.ToString()}");
-        AnsiConsole.MarkupLine("[blue]Spieler 2:[/]");
-        foreach (var action in scores.Item4) AnsiConsole.MarkupLine($"{action.ToString()}");
+        Prisoner[] methods = [AugeUmAuge, Feind, Freund, Misstrauisch, Nachtragend, Launisch];
+        var choices = AnsiConsole.Prompt(
+        new MultiSelectionPrompt<string>()
+        .Title("Welche Algorithmen sollen eingesetzt werden?")
+        .PageSize(10)
+        .MoreChoicesText("[grey](Hoch und Runter bewegen, um mehr Algorithmen einzusehen)[/]")
+        .InstructionsText(
+            "[grey](Drücke [blue]<space>[/] um eine, " +
+            "[green]<enter>[/] um zu bestätigen)[/]")
+        .AddChoices(methods.Select(x => x.Method.Name)));
+        foreach (var choice in choices) AnsiConsole.WriteLine(choice);
+        RunMatches(methods.Where(x => choices.Contains(x.Method.Name)).Select(x => x).ToArray(), 40);
     }
 
+    private static void RunMatches(Prisoner[] methods, int RoundsPerMatch)
+    {
+        Dictionary<Prisoner, int> prisoners = new Dictionary<Prisoner, int>();
+        foreach (Prisoner prisoner in methods) prisoners.Add(prisoner, 0);
+        foreach (Prisoner prisoner in prisoners.Keys)
+        {
+            foreach (Prisoner opponent in prisoners.Keys)
+            {
+                var results = PrisonersDilemma(prisoner, opponent, RoundsPerMatch);
+                prisoners[prisoner] += results.Item1;
+                prisoners[opponent] += results.Item2;
+
+                var resultTable = new Table();
+                resultTable.Title = new TableTitle($"[red]{prisoner.Method.Name}[/] vs. [blue]{opponent.Method.Name}[/]");
+                resultTable.AddColumn("Algorithmus");
+                for (int i = 0; i < RoundsPerMatch; i++)
+                {
+                    resultTable.AddColumn($"{i + 1}");
+                }
+                resultTable.AddColumn("Punkte");
+                string[] prisonerResult = new string[RoundsPerMatch + 2];
+                string[] opponentResult = new string[RoundsPerMatch + 2];
+                prisonerResult[0] = prisoner.Method.Name;
+                opponentResult[0] = opponent.Method.Name;
+                for (int i = 1; i < RoundsPerMatch + 1; i++)
+                {
+                    prisonerResult[i] = results.Item3[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+                    opponentResult[i] = results.Item4[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+                }
+                prisonerResult[prisonerResult.Length - 1] = $"[cyan]{results.Item1}[/]";
+                opponentResult[opponentResult.Length - 1] = $"[cyan]{results.Item2}[/]";
+                resultTable.AddRow(prisonerResult);
+                resultTable.AddRow(opponentResult);
+
+                AnsiConsole.Write(resultTable);
+            }
+        }
+        Random random = new Random();
+        AnsiConsole.Write(new BarChart().Width(methods.Length * RoundsPerMatch * 10)
+                                        .Label("[underline cyan]Endergebnis[/]")
+                                        .CenterLabel()
+                                        .AddItems(prisoners, score => new BarChartItem(score.Key.Method.Name, score.Value, new Color((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))));
+    }
     private static (int, int, List<Actions>, List<Actions>) PrisonersDilemma(Prisoner player1, Prisoner player2, int rounds)
     {
         int player1Score = 0, player2Score = 0;
@@ -64,6 +111,9 @@ internal class Program
         Cooperate = 1,
         Attack = 2
     }
+
+
+
 
     public static Actions AugeUmAuge(Actions[] opponentActions, Actions[] actions)
     {
