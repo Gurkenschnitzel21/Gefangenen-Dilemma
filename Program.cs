@@ -23,20 +23,40 @@ internal class Program
             "[green]<enter>[/] um zu bestätigen)[/]")
         .AddChoices(methods.Select(x => x.Method.Name)));
         foreach (var choice in choices) AnsiConsole.WriteLine(choice);
-        RunMatches(methods.Where(x => choices.Contains(x.Method.Name)).Select(x => x).ToArray(), 40);
+        var results = RunMatches(methods.Where(x => choices.Contains(x.Method.Name)).Select(x => x).ToArray(), 20);
+
+        AnsiConsole.WriteLine("\n");
+        var options = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+        .Title("Wähle eine der folgenden Optionen:")
+        .PageSize(10)
+        .MoreChoicesText("[grey](Hoch und Runter bewegen, um mehr Algorithmen einzusehen)[/]")
+        .AddChoices(new[] {
+            "Beenden",
+            "Wiederholen",
+        }));
+
+        switch (options)
+        {
+            case "Beenden": break;
+            case "Wiederholen": AnsiConsole.Clear(); Main(args); break;
+            default: break;
+        }
     }
 
-    private static void RunMatches(Prisoner[] methods, int RoundsPerMatch)
+    private static Dictionary<(string, string), (int, int, List<Actions>, List<Actions>)> RunMatches(Prisoner[] methods, int RoundsPerMatch)
     {
         Dictionary<Prisoner, int> prisoners = new Dictionary<Prisoner, int>();
+        Dictionary<(string, string), (int, int, List<Actions>, List<Actions>)> results = new Dictionary<(string, string), (int, int, List<Actions>, List<Actions>)>();
         foreach (Prisoner prisoner in methods) prisoners.Add(prisoner, 0);
         foreach (Prisoner prisoner in prisoners.Keys)
         {
             foreach (Prisoner opponent in prisoners.Keys)
             {
-                var results = PrisonersDilemma(prisoner, opponent, RoundsPerMatch);
-                prisoners[prisoner] += results.Item1;
-                prisoners[opponent] += results.Item2;
+                var result = PrisonersDilemma(prisoner, opponent, RoundsPerMatch);
+                results.Add((prisoner.Method.Name, opponent.Method.Name), result);
+                prisoners[prisoner] += result.Item1;
+                prisoners[opponent] += result.Item2;
 
                 var resultTable = new Table();
                 resultTable.Title = new TableTitle($"[red]{prisoner.Method.Name}[/] vs. [blue]{opponent.Method.Name}[/]");
@@ -52,11 +72,11 @@ internal class Program
                 opponentResult[0] = opponent.Method.Name;
                 for (int i = 1; i < RoundsPerMatch + 1; i++)
                 {
-                    prisonerResult[i] = results.Item3[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
-                    opponentResult[i] = results.Item4[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+                    prisonerResult[i] = result.Item3[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+                    opponentResult[i] = result.Item4[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
                 }
-                prisonerResult[prisonerResult.Length - 1] = $"[cyan]{results.Item1}[/]";
-                opponentResult[opponentResult.Length - 1] = $"[cyan]{results.Item2}[/]";
+                prisonerResult[prisonerResult.Length - 1] = $"[cyan]{result.Item1}[/]";
+                opponentResult[opponentResult.Length - 1] = $"[cyan]{result.Item2}[/]";
                 resultTable.AddRow(prisonerResult);
                 resultTable.AddRow(opponentResult);
 
@@ -68,6 +88,8 @@ internal class Program
                                         .Label("[underline cyan]Endergebnis[/]")
                                         .CenterLabel()
                                         .AddItems(prisoners, score => new BarChartItem(score.Key.Method.Name, score.Value, new Color((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))));
+    
+        return results;
     }
     private static (int, int, List<Actions>, List<Actions>) PrisonersDilemma(Prisoner player1, Prisoner player2, int rounds)
     {
@@ -102,6 +124,10 @@ internal class Program
         }
         Thread.Sleep(milliSecondDelay);
         return (player1Score, player2Score, player1Actions, player2Actions);
+    }
+    private static void ProvideAdditionalInfo(Dictionary<(string, string), (int, int, List<Actions>, List<Actions>)> matchData)
+    {
+        //additional info: highest lead, highest sum, most coops, most successful attacks
     }
 
     private delegate Actions Prisoner(Actions[] opponentActions, Actions[] playerActions);
