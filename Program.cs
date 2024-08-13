@@ -1,5 +1,6 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using Spectre.Console;
+using System.ComponentModel;
 
 internal class Program
 {
@@ -10,9 +11,19 @@ internal class Program
         { 0, 2, 0},
         { 0, 3, 0}
     };
+    private delegate Actions Prisoner(Actions[] opponentActions, Actions[] playerActions);
+    public enum Actions
+    {
+        None = 0,
+        Cooperate = 1,
+        Attack = 2
+    }
+
+
     private static void Main(string[] args)
     {
-        Prisoner[] methods = [AugeUmAuge, Feind, Freund, Misstrauisch, Nachtragend, Launisch];
+        Prisoner[] methods = [AugeUmAuge, Feind, Freund, Misstrauisch, Nachtragend, Launisch, Zufällig]; 
+
         var choices = AnsiConsole.Prompt(
         new MultiSelectionPrompt<string>()
         .Title("Welche Algorithmen sollen eingesetzt werden?")
@@ -22,9 +33,10 @@ internal class Program
             "[grey](Drücke [blue]<space>[/] um eine, " +
             "[green]<enter>[/] um zu bestätigen)[/]")
         .AddChoices(methods.Select(x => x.Method.Name)));
-        foreach (var choice in choices) AnsiConsole.WriteLine(choice);
-        var results = RunMatches(methods.Where(x => choices.Contains(x.Method.Name)).Select(x => x).ToArray(), 20);
 
+        foreach (var choice in choices) AnsiConsole.WriteLine(choice);
+
+        var results = RunMatches(methods.Where(x => choices.Contains(x.Method.Name)).Select(x => x).ToArray(), 20);
         AnsiConsole.WriteLine("\n");
         var options = AnsiConsole.Prompt(
         new SelectionPrompt<string>()
@@ -34,12 +46,15 @@ internal class Program
         .AddChoices(new[] {
             "Beenden",
             "Wiederholen",
+            "Mehr Infos",
         }));
 
+        
         switch (options)
         {
             case "Beenden": break;
             case "Wiederholen": AnsiConsole.Clear(); Main(args); break;
+            case "Mehr Infos": ProvideAdditionalInfo(results); Console.ReadLine(); AnsiConsole.Clear(); Main(args); break;
             default: break;
         }
     }
@@ -58,29 +73,7 @@ internal class Program
                 prisoners[prisoner] += result.Item1;
                 prisoners[opponent] += result.Item2;
 
-                var resultTable = new Table();
-                resultTable.Title = new TableTitle($"[red]{prisoner.Method.Name}[/] vs. [blue]{opponent.Method.Name}[/]");
-                resultTable.AddColumn("Algorithmus");
-                for (int i = 0; i < RoundsPerMatch; i++)
-                {
-                    resultTable.AddColumn($"{i + 1}");
-                }
-                resultTable.AddColumn("Punkte");
-                string[] prisonerResult = new string[RoundsPerMatch + 2];
-                string[] opponentResult = new string[RoundsPerMatch + 2];
-                prisonerResult[0] = prisoner.Method.Name;
-                opponentResult[0] = opponent.Method.Name;
-                for (int i = 1; i < RoundsPerMatch + 1; i++)
-                {
-                    prisonerResult[i] = result.Item3[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
-                    opponentResult[i] = result.Item4[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
-                }
-                prisonerResult[prisonerResult.Length - 1] = $"[cyan]{result.Item1}[/]";
-                opponentResult[opponentResult.Length - 1] = $"[cyan]{result.Item2}[/]";
-                resultTable.AddRow(prisonerResult);
-                resultTable.AddRow(opponentResult);
-
-                AnsiConsole.Write(resultTable);
+                PrintMatchTable(prisoner.Method.Name, opponent.Method.Name, result, RoundsPerMatch);
             }
         }
         Random random = new Random();
@@ -90,6 +83,33 @@ internal class Program
                                         .AddItems(prisoners, score => new BarChartItem(score.Key.Method.Name, score.Value, new Color((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))));
     
         return results;
+    }
+    private static void PrintMatchTable(string prisoner, string opponent, (int, int, List<Actions>, List<Actions>) result, int RoundsPerMatch)
+    {
+        var resultTable = new Table();
+        resultTable.Title = new TableTitle($"[red]{prisoner}[/] vs. [blue]{opponent}[/]");
+        resultTable.AddColumn("Algorithmus");
+        for (int i = 0; i < RoundsPerMatch; i++)
+        {
+            resultTable.AddColumn($"{i + 1}");
+        }
+        resultTable.AddColumn("Punkte");
+        string[] prisonerResult = new string[RoundsPerMatch + 2];
+        string[] opponentResult = new string[RoundsPerMatch + 2];
+        prisonerResult[0] = $"[red]{prisoner}[/]";
+        opponentResult[0] = $"[blue]{opponent}[/]";
+
+        for (int i = 1; i < RoundsPerMatch + 1; i++)
+        {
+            prisonerResult[i] = result.Item3[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+            opponentResult[i] = result.Item4[i - 1] == Actions.Attack ? "[red]o[/]" : "[green]o[/]";
+        }
+        prisonerResult[prisonerResult.Length - 1] = $"[cyan]{result.Item1}[/]";
+        opponentResult[opponentResult.Length - 1] = $"[cyan]{result.Item2}[/]";
+        resultTable.AddRow(prisonerResult);
+        resultTable.AddRow(opponentResult);
+
+        AnsiConsole.Write(resultTable);
     }
     private static (int, int, List<Actions>, List<Actions>) PrisonersDilemma(Prisoner player1, Prisoner player2, int rounds)
     {
@@ -127,17 +147,83 @@ internal class Program
     }
     private static void ProvideAdditionalInfo(Dictionary<(string, string), (int, int, List<Actions>, List<Actions>)> matchData)
     {
-        //additional info: highest lead, highest sum, most coops, most successful attacks
-    }
+        //additional info: highest lead, highest sum, most coops, most successful attacks (top 3)
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Höchste Punktedifferenz[/]"));
+        var tempData = matchData.Select(x => x.Key).ToList();
+        for (int i = 0; i < 3; i++)
+        {
+            (string, string) bestMatch = ("", "");
+            foreach (var kvp in tempData)
+            {
+                if (bestMatch.Item1 == "" || Math.Abs(matchData[kvp].Item1 - matchData[kvp].Item2) > Math.Abs(matchData[bestMatch].Item1 - matchData[bestMatch].Item2)) bestMatch = kvp;
+            }
+            tempData.Remove(bestMatch);
+            PrintMatchTable(bestMatch.Item1, bestMatch.Item2, matchData[bestMatch], matchData[bestMatch].Item3.Count);
+        }
 
-    private delegate Actions Prisoner(Actions[] opponentActions, Actions[] playerActions);
-    public enum Actions
-    {
-        None = 0,
-        Cooperate = 1,
-        Attack = 2
-    }
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Höchste Gesamtpunktzahl[/]"));
+        tempData = matchData.Select(x => x.Key).ToList();
+        for (int i = 0; i < 3; i++)
+        {
+            (string, string) bestMatch = ("", "");
+            foreach (var kvp in tempData)
+            {
+                if (bestMatch.Item1 == "" || matchData[kvp].Item1 + matchData[kvp].Item2 > matchData[bestMatch].Item1 + matchData[bestMatch].Item1) bestMatch = kvp;
+            }
+            tempData.Remove(bestMatch);
+            PrintMatchTable(bestMatch.Item1, bestMatch.Item2, matchData[bestMatch], matchData[bestMatch].Item3.Count);
+        }
 
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Meiste Kooperationen[/]"));
+        tempData = matchData.Select(x => x.Key).ToList();
+        for (int i = 0; i < 3; i++)
+        {
+            (string, string) bestMatch = ("", "");
+            int mostCoops = 0;
+            foreach (var kvp in tempData)
+            {
+                int coops = 0;
+                for (int j = 0; j < matchData[kvp].Item3.Count; j++)
+                {
+                    if (matchData[kvp].Item3[j] == Actions.Cooperate && matchData[kvp].Item4[j] == Actions.Cooperate) coops++;
+                }
+                if (coops > mostCoops || bestMatch.Item1 == "")
+                {
+                    mostCoops = coops;
+                    bestMatch = kvp;
+                }
+            }
+            tempData.Remove(bestMatch);
+            PrintMatchTable(bestMatch.Item1, bestMatch.Item2, matchData[bestMatch], matchData[bestMatch].Item3.Count);
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(new Rule("[cyan]Meiste erfolgreiche Angriffe[/]"));
+        tempData = matchData.Select(x => x.Key).ToList();
+        for (int i = 0; i < 3; i++)
+        {
+            (string, string) bestMatch = ("", "");
+            int mostAttacks = 0;
+            foreach (var kvp in tempData)
+            {
+                int attacks = 0;
+                for (int j = 0; j < matchData[kvp].Item3.Count; j++)
+                {
+                    if (matchData[kvp].Item3[j] == Actions.Attack && matchData[kvp].Item4[j] == Actions.Cooperate || matchData[kvp].Item3[j] == Actions.Cooperate && matchData[kvp].Item4[j] == Actions.Attack) attacks++;
+                }
+                if (attacks > mostAttacks || bestMatch.Item1 == "")
+                {
+                    mostAttacks = attacks;
+                    bestMatch = kvp;
+                }
+            }
+            tempData.Remove(bestMatch);
+            PrintMatchTable(bestMatch.Item1, bestMatch.Item2, matchData[bestMatch], matchData[bestMatch].Item3.Count);
+        }
+    }
 
 
 
@@ -181,5 +267,10 @@ internal class Program
     {
         if (opponentActions.Length % 2 == 0) return Actions.Cooperate;
         else return Actions.Attack;
+    }
+    public static Actions Zufällig(Actions[] opponentActions, Actions[] actions)
+    {
+        Random random = new Random();
+        return random.Next(2) > 0 ? Actions.Attack : Actions.Cooperate;
     }
 }
